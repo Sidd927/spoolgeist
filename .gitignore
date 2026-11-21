@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.hypothesis/
+# Node
+node_modules/
+dist/
+# OS / editors
+.DS_Store
+# local runtime data (synthetic, regenerable)
+runtime/
+*.sqlite3
+# NOTE: never ignore /.kiro (competition requirement)
