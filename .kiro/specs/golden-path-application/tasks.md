@@ -22,7 +22,7 @@ Language: **TypeScript** (full-stack, as specified in the design).
   - Create `packages/core/src/index.ts` and `packages/app/src/server.ts` as empty entry points so the workspace resolves
   - _Requirements: 10.3 (original implementation in this repository)_
 
-- [ ] 2. Define shared TypeScript types and interfaces
+- [x] 2. Define shared TypeScript types and interfaces
   - Create `packages/core/src/types.ts` containing all interfaces and types from the design document:
     `Report`, `ExtractionRule`, `LineClassification` (union of extract/ignore/header/footer), `PlausibilityCheck`, `ContentHash`, `RuleStatus`, `RuleRecord`, `ApprovalRecord`, `RuleEvent`, `ValidationResult`, `ValidationCase`, `ProcessingState`, `ProcessingResult`, `ExtractedValue`, `Provenance`, `LineAccountingSummary`, `LineEntry`, `OffendingLine`, `SuspiciousItem`
   - Ensure `ProcessingResult.aiCallCount` is typed as the literal `0` (not `number`) to enforce the zero-AI invariant at the type level
