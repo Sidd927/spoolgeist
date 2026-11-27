@@ -1,5 +1,10 @@
 {
-  "pbtResults": {},
+  "pbtResults": {
+    "3.2 Write property tests for ExpressionRunner (Properties 11 and 12)": {
+      "status": "passed",
+      "lastRunTimestamp": 1795800785784
+    }
+  },
   "executionHistory": {
     "1. Scaffold monorepo structure and toolchain": [
       {
@@ -23,6 +28,25 @@
         "executionId": "38188399-65c7-4849-922f-f5d5c6179a44",
         "chatSessionId": "sess_e7e6560f-84ae-4036-a355-9730290a4d5a",
         "timestamp": 1795799833248
+      }
+    ],
+    "3.1 Implement `packages/core/src/expression-runner.ts`": [
+      {
+        "executionId": "cc3d1e89-e116-485b-b902-9b6ba1f78f03",
+        "chatSessionId": "sess_e7e6560f-84ae-4036-a355-9730290a4d5a",
+        "timestamp": 1795800112287
+      },
+      {
+        "executionId": "cc3d1e89-e116-485b-b902-9b6ba1f78f03",
+        "chatSessionId": "sess_e7e6560f-84ae-4036-a355-9730290a4d5a",
+        "timestamp": 1795801556765
+      }
+    ],
+    "3. Implement ExpressionRunner (re2js wrapper)": [
+      {
+        "executionId": "cc3d1e89-e116-485b-b902-9b6ba1f78f03",
+        "chatSessionId": "sess_e7e6560f-84ae-4036-a355-9730290a4d5a",
+        "timestamp": 1795801556790
       }
     ]
   }

@@ -30,8 +30,8 @@ Language: **TypeScript** (full-stack, as specified in the design).
   - Add `computeRuleHash(rule: ExtractionRule): string` stub (implementation in task 7)
   - _Requirements: 9.1–9.12 (type-level safety properties), Design: Data Models section_
 
-- [ ] 3. Implement ExpressionRunner (re2js wrapper)
-  - [ ] 3.1 Implement `packages/core/src/expression-runner.ts`
+- [x] 3. Implement ExpressionRunner (re2js wrapper)
+  - [x] 3.1 Implement `packages/core/src/expression-runner.ts`
     - Import `RE2JS` from `re2js`
     - Implement `compileExpression(pattern: string): CompiledExpression` — calls `RE2JS.compile(pattern)`, throws `PatternSyntaxException` on invalid syntax (backreferences `\1`, lookaheads `(?=`, `(?!`, `(?<=`, `(?<!`)
     - Implement `runExpression(expr: CompiledExpression, input: string, timeoutMs?: number): RegExpMatchArray | null` — executes `matcher.find()`, measures `performance.now()` delta, throws `ExpressionTimeoutError` if elapsed exceeds `timeoutMs` (default 500 ms), extracts named capture groups
