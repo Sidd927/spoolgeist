@@ -1,0 +1,16 @@
+{
+  "name": "spoolgeist",
+  "private": true,
+  "workspaces": ["packages/core", "packages/app"],
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b packages/core && npm run build --workspace=packages/app",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b packages/core packages/app --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0",
+    "vitest": "^5.1.2"
+  }
+}

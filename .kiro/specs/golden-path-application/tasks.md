@@ -12,7 +12,7 @@ Language: **TypeScript** (full-stack, as specified in the design).
 
 ### Group 1 — Skeleton and Engine Core
 
-- [ ] 1. Scaffold monorepo structure and toolchain
+- [x] 1. Scaffold monorepo structure and toolchain
   - Create the npm workspace root `package.json` with two workspaces: `packages/core` and `packages/app`
   - Create `packages/core/package.json` (name: `@spoolgeist/core`, private, ESM) with `typescript`, `vitest`, `fast-check`, `@fast-check/vitest`, `re2js` as dependencies
   - Create `packages/app/package.json` (name: `@spoolgeist/app`, private, ESM) with `hono`, `react`, `react-dom`, `vite`, `@vitejs/plugin-react`, `zod`, dependency on `@spoolgeist/core`

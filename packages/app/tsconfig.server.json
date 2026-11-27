@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "composite": true,
+    "types": ["node"]
+  },
+  "include": ["src/server.ts", "src/routes/**/*", "src/ai-provider-client.ts", "src/demo-recordings/**/*.ts"]
+}
