@@ -29,6 +29,7 @@
 
 import {
   compileExpression,
+  runExpression,
   runFullMatch,
   ExpressionTimeoutError,
   RE2JSSyntaxException,
@@ -42,6 +43,7 @@ import { computeRuleHash } from "./rule-hash.js";
 declare const performance: { now(): number };
 
 import type {
+  ExtractionRule,
   ExtractedValue,
   LineAccountingSummary,
   LineClassification,
@@ -182,6 +184,49 @@ export function processReport(
     throw new IntegrityError(recomputed, ruleRecord.contentHash);
   }
 
+  return runRule(report, ruleRecord.rule, ruleRecord.contentHash);
+}
+
+/**
+ * Evaluates a NOT-YET-APPROVED rule against a report, for the validation gate
+ * only ("proposal evaluation mode" in the design). It skips the lifecycle
+ * guards (status/approval) but runs exactly the same matching logic as
+ * processReport. The app's processing path never calls this.
+ */
+export function evaluateProposal(report: Report, rule: ExtractionRule): ProcessingResult {
+  return runRule(report, rule, computeRuleHash(rule));
+}
+
+/**
+ * Processes a report against a registry: picks the first ACTIVE rule whose
+ * layout matches, then runs processReport (all guards apply). If no active
+ * rule matches, returns layout-mismatch with every line unexplained.
+ */
+export function processWithRegistry(
+  report: Report,
+  records: readonly RuleRecord[],
+): ProcessingResult {
+  let matched: RuleRecord | null;
+  try {
+    matched = detectLayout(report, records);
+  } catch (e) {
+    if (e instanceof RE2JSSyntaxException) {
+      throw new RuleExpressionError("layoutMatchExpression", "<registry>", e);
+    }
+    throw e;
+  }
+  if (matched === null) return mismatchResult(report, null);
+  return processReport(report, matched);
+}
+
+interface RuleRef {
+  rule: ExtractionRule;
+  contentHash: string;
+}
+
+function runRule(report: Report, rule: ExtractionRule, contentHash: string): ProcessingResult {
+  const ruleRecord: RuleRef = { rule, contentHash };
+
   // --- Guard 2c: input size limits -> Refusal (never partial processing) ---
   const tooLarge = inputTooLarge(report);
   if (tooLarge !== null) {
@@ -189,21 +234,13 @@ export function processReport(
   }
 
   // --- Guard 3: the report must match this rule's layout -------------------
-  let matched: RuleRecord | null;
+  let layoutCompiled: CompiledExpression;
   try {
-    matched = detectLayout(report, [ruleRecord]);
+    layoutCompiled = compileExpression(rule.layoutMatchExpression);
   } catch (e) {
-    if (e instanceof RE2JSSyntaxException) {
-      throw new RuleExpressionError(
-        "layoutMatchExpression",
-        ruleRecord.rule.layoutMatchExpression,
-        e,
-      );
-    }
-    throw e;
+    throw new RuleExpressionError("layoutMatchExpression", rule.layoutMatchExpression, e);
   }
-
-  if (matched === null) {
+  if (runExpression(layoutCompiled, report.lines.join("\n")) === null) {
     return mismatchResult(report, ruleRecord);
   }
 
@@ -790,7 +827,7 @@ function runPlausibilityChecks(
 
 function mismatchResult(
   report: Report,
-  ruleRecord: RuleRecord,
+  ruleRecord: RuleRef | null,
 ): ProcessingResult {
   const lineBreakdown: LineEntry[] = report.lines.map((content, i) => ({
     lineNumber: i,
@@ -801,8 +838,7 @@ function mismatchResult(
     reportId: report.id,
     processedAt: report.submittedAt,
     state: "layout-mismatch",
-    ruleId: ruleRecord.rule.ruleId,
-    ruleContentHash: ruleRecord.contentHash,
+    ...(ruleRecord ? { ruleId: ruleRecord.rule.ruleId, ruleContentHash: ruleRecord.contentHash } : {}),
     aiCallCount: 0,
     extractedValues: [],
     lineAccountingSummary: {
@@ -817,9 +853,9 @@ function mismatchResult(
         lineNumber: 0,
         content: report.lines[0] ?? "",
         reason: "layout-mismatch",
-        detail:
-          "No supported layout matched this report. The report's structure " +
-          "does not satisfy the active rule's layout condition.",
+        detail: ruleRecord
+          ? "The report does not satisfy this rule's layout condition."
+          : "No active approved rule recognises this report's layout.",
       },
     ],
     resolutionHint:
@@ -830,7 +866,7 @@ function mismatchResult(
 
 function timeoutRefusal(
   report: Report,
-  ruleRecord: RuleRecord,
+  ruleRecord: RuleRef,
   lineNumber: number,
   err: ExpressionTimeoutError,
 ): ProcessingResult {
@@ -875,7 +911,7 @@ function timeoutRefusal(
 
 function tooLargeRefusal(
   report: Report,
-  ruleRecord: RuleRecord,
+  ruleRecord: RuleRef,
   detail: string,
 ): ProcessingResult {
   const lineBreakdown: LineEntry[] = report.lines.map((content, i) => ({
