@@ -25,7 +25,7 @@ Spec: `.kiro/specs/golden-path-application/tasks.md` (Kiro; checkboxes are left 
 | 16, 30 Demo recordings, seed, synthetic data | done | C | `21a4b1c` |
 | 18 Onboarding flow integration tests | done (`demo.test.ts`) | C | `21a4b1c` |
 | 20–29 Frontend views, provenance, demo banner | done | C | `fa076b2` |
-| 31 Deployment | GitHub Pages workflow (D8) | C | pending |
+| 31 Deployment | GitHub Pages via Actions (D8): https://sidd927.github.io/spoolgeist/ | C | `ab11bb3`, run 46139125182 |
 | 33–34 Optional FHIR / patient view | not started | — | — |
 
 ## Verification log
@@ -34,3 +34,5 @@ Spec: `.kiro/specs/golden-path-application/tasks.md` (Kiro; checkboxes are left 
 | 28 Nov | `npm run typecheck`, client `tsc` | clean |
 | 28 Nov | `npx vitest run` | 141 tests passed |
 | 28 Nov | Browser check of the local build: golden path, refusal, review, provenance highlight, possession → gate failure, light theme | works; no console errors |
+| 28 Nov | CI run 46139125182 on Node 22: typecheck, tests, build, deploy | passed |
+| 28 Nov | **Live site** checks:<br>- refusal: line 9 ghost, 1 unexplained, 0 AI calls<br>- lipid onboarding: recorded draft → gate 41/41 → typed-name approval → next patient accepted, 0 AI calls<br>- possession: gate fails `LS-line11-appended`<br>- state persists across a reload<br>- self-hosted fonts load<br>- no console errors | works |
