@@ -33,7 +33,7 @@ export function About() {
           <li>{LIMITATIONS_DISCLAIMER}</li>
           <li>Fields a rule declares as variable (identifiers, dates, reference ranges) are accepted with any value of the declared shape. The gate does not mutate them.</li>
           <li>The gate can only test units and ranges that the rule declares.</li>
-          <li>The hosted demo replays <strong>recorded</strong> real model responses. It makes no live AI calls. Live drafting needs the local server and your own API key.</li>
+          <li>The hosted demo replays <strong>recorded</strong> real model responses. It makes no live AI calls. This build has no live drafting path; the drafts were recorded once with <code>scripts/record-drafts.ts</code>.</li>
           <li>State is kept in your browser&apos;s localStorage. It has no accounts and no shared server, and approvals here are demonstrations, not an audit trail.</li>
           <li>The demo seed pre-approves the CBC and BMP rules, and is labelled as such everywhere it appears.</li>
           <li>Only plain-text printouts are handled. Real print streams (PCL/PostScript, code pages) are out of scope here.</li>
@@ -42,7 +42,7 @@ export function About() {
 
       <section className="tile stack">
         <h2>How it was built</h2>
-        <p>The specification (requirements, design, task plan) and the first implementation tasks were produced with <strong>Kiro</strong>, and they are kept in <code>/.kiro</code>. When the Kiro credits ran out, development continued with <strong>Claude Code</strong>. Every commit says which tool produced it, and <code>PRIOR_WORK.md</code> has the full development log.</p>
+        <p>The specification (requirements, design, task plan) and the first implementation tasks were produced with <strong>Kiro</strong>, and they are kept in <code>/.kiro</code>. When the Kiro credits ran out, development continued with <strong>Claude Code</strong>. Claude Code&apos;s commits say so in their messages; Kiro&apos;s task commits match the execution history Kiro wrote to <code>/.kiro</code>. <code>PRIOR_WORK.md</code> has the full development log.</p>
       </section>
     </div>
   );

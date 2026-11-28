@@ -23,7 +23,7 @@ export function GateResults({ result }: { result: ValidationResult }) {
         </div>
       </div>
       {groups.map(([title, cases]) => (
-        <div key={title}>
+        <div key={title} className="table-scroll">
           <h3 style={{ margin: "8px 0" }}>{title}</h3>
           <table>
             <thead><tr><th scope="col">Case</th><th scope="col">What the gate tried</th><th scope="col">Required</th><th scope="col">Observed</th><th scope="col"><span className="sr-only">Pass</span></th></tr></thead>

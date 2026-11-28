@@ -71,7 +71,7 @@ More detail: [docs/DECISIONS.md](docs/DECISIONS.md), [docs/EXECUTION_TRACKER.md]
 ## How it was built
 - **Kiro** produced the spec in `/.kiro` and the first implementation tasks.
 - When the Kiro credits ran out, development continued with **Claude Code**.
-- Every commit names its tool. See [PRIOR_WORK.md](PRIOR_WORK.md).
+- Claude Code's commits name it in their messages. Kiro's task commits (Tasks 1, 2, 3.1 and 4.1) match the execution history Kiro wrote to `.kiro/specs/golden-path-application/tasks.meta.json`. See [PRIOR_WORK.md](PRIOR_WORK.md).
 
 ## Licence
 MIT.

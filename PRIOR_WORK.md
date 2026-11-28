@@ -18,12 +18,12 @@ This application was started with **Kiro** during the Kiroween 2026 Submission P
 
 ## Development log: which tool produced what
 
-The commit history is the authoritative record. It has not been rewritten, and every commit message names the tool.
+The commit history is the authoritative record. It has not been rewritten. Claude Code's commits name it in their messages. Kiro's task commits (`9a3a3b4`, `51c4b99`, `965f6b9`, `10ce40a`) are titled by task. Each one is matched by an entry in the execution history Kiro wrote to `.kiro/specs/golden-path-application/tasks.meta.json`, timestamped within about two minutes before the commit.
 
 | Dates | Tool | Work |
 |---|---|---|
 | 22 Nov 2026 | Claude Code | Repository stub files (README, this file, `.gitignore`). |
-| 27–28 Nov 2026 | **Kiro** | Spec `golden-path-application`: requirements, design and a 34-task plan (`/.kiro`). Tasks 1 (scaffold), 2 (types), 3.1 (RE2 expression runner) and 4.1 (layout detector). A draft of task 5.1 (extraction engine), committed **unmodified** as `5021208`. |
+| 27–28 Nov 2026 | **Kiro** | Spec `golden-path-application`: requirements, design and a 34-task plan (`/.kiro`). Tasks 1 (scaffold), 2 (types), 3.1 (RE2 expression runner, with fast-check property tests for Properties 11 and 12, which Kiro recorded as passed in `tasks.meta.json`) and 4.1 (layout detector, with its unit tests). A draft of task 5.1 (extraction engine), committed **unmodified** as `5021208`. |
 | 28 Nov 2026 onwards | **Claude Code** | Kiro's monthly credits were exhausted (50/50) and an extra-credit request was pending, so development continued in Claude Code. Its work: safety fixes to the Kiro engine draft, the rule lifecycle, the validation gate, the proposal parser, the onboarding prompt, the synthetic demo data, recorded AI drafts, the frontend, tests, docs and deployment. Each decision that departs from the Kiro design is in [docs/DECISIONS.md](docs/DECISIONS.md); task-by-task status is in [docs/EXECUTION_TRACKER.md](docs/EXECUTION_TRACKER.md). |
 
 No Kiro activity, artefacts or logs have been fabricated. Kiro's spec files and task checkboxes are left exactly as Kiro produced them.

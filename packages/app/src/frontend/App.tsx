@@ -31,6 +31,7 @@ export function App() {
 
   const ctx: AppCtx = useMemo(() => ({ state, setState, onboardLines, setOnboardLines, now }), [state, setState, onboardLines]);
   const [page = ""] = route.path;
+  const activeCount = state.records.filter((r) => r.status === "active").length;
 
   const nav: [string, string][] = [["process", "Process"], ["onboard", "Onboard"], ["rules", "Rules"], ["about", "About"]];
   let view: React.ReactNode;
@@ -45,7 +46,8 @@ export function App() {
 
   return (
     <Ctx.Provider value={ctx}>
-      <a className="skip" href="#main">Skip to content</a>
+      {/* The app routes on the URL hash, so a plain "#main" link would navigate to an unknown route (Home). Move focus instead. */}
+      <a className="skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById("main")?.focus(); }}>Skip to content</a>
       <header className="topbar">
         <a className="mark" href={href("")}><Mark />Spoolgeist</a>
         <nav className="nav" aria-label="Main">
@@ -54,7 +56,7 @@ export function App() {
           ))}
         </nav>
         <span className="spacer" />
-        <span className="caption" title="Active rules in this browser">{state.records.filter((r) => r.status === "active").length} active rules</span>
+        <span className="caption" title="Active rules in this browser">{activeCount} active {activeCount === 1 ? "rule" : "rules"}</span>
         <button className="btn small" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>
           {theme === "dark" ? "☀ Light" : "☾ Dark"}
         </button>

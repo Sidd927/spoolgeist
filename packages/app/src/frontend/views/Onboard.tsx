@@ -108,12 +108,12 @@ export function Onboard() {
             {!recording ? (
               <div className="callout">
                 <p>No recorded AI draft exists for this printout. The hosted demo never calls an AI model live, so it can only replay recordings made with the real model.</p>
-                <p style={{ marginTop: 8 }}>Live drafting with your own API key is available in the local server (see the README).</p>
+                <p style={{ marginTop: 8 }}>Live AI drafting is not part of this build. The demo&apos;s drafts were recorded once with <code>scripts/record-drafts.ts</code> (see the README).</p>
               </div>
             ) : !draft ? (
               <>
                 <p>
-                  Sends the exact prompt below to <span className="mono">{recording.aiModel}</span>. In this hosted demo the response is a{" "}
+                  The exact prompt below was sent once to <span className="mono">{recording.aiModel}</span>. In this hosted demo the response is a{" "}
                   <span className="badge recorded">recorded</span> real model response, captured {fmtTime(recording.capturedAt)}, replayed without any network call.
                 </p>
                 <details><summary>Prompt sent to the model (<Hash value={recording.promptHash} n={10} />)</summary><pre className="json">{recording.prompt}</pre></details>

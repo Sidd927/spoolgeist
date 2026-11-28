@@ -15,9 +15,10 @@
 **How Kiro was used** (edit to match reality before submitting):
 - **Spec-driven development.** The `golden-path-application` spec (requirements, design, 34-task plan) defined the architecture, the 12 correctness properties and the lifecycle. All of these are implemented and tested.
 - **Kiro implemented** the scaffold, the domain types, the RE2 expression runner, the layout detector and a draft of the extraction engine.
-- **Honest note:** the Kiro credits ran out on 28 Nov. The remaining tasks were implemented with Claude Code, against Kiro's spec, with every deviation documented in `docs/DECISIONS.md` and attribution in every commit. *(If Kiro credits return before the deadline, add the steering and hooks work here.)*
+- **Property-based testing in Kiro.** Kiro wrote fast-check properties for the expression runner: Property 11 (unsafe RE2 syntax is always rejected) and Property 12 (timeout structure). It ran them and recorded them as passed in `tasks.meta.json`.
+- **Honest note:** the Kiro credits ran out on 28 Nov. The remaining tasks were implemented with Claude Code, against Kiro's spec, with every deviation documented in `docs/DECISIONS.md`. Claude Code's commits name it; Kiro's task commits match Kiro's own execution history in `/.kiro`. *(If Kiro credits return before the deadline, add the steering and hooks work here.)*
 
-**Tech:** TypeScript, re2js, React 19 and Vite, vitest with fast-check (142 tests, including property and adversarial tests). It is a static deployment on GitHub Pages, and the engine runs in the browser.
+**Tech:** TypeScript, re2js, React 19 and Vite, vitest with fast-check (145 tests, including property and adversarial tests). It is a static deployment on GitHub Pages, and the engine runs in the browser.
 
 **Links:**
 - Repo: https://github.com/Sidd927/spoolgeist (MIT)
