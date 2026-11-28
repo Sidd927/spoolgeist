@@ -13,3 +13,9 @@ dist/
 runtime/
 *.sqlite3
 # NOTE: never ignore /.kiro (competition requirement)
+# TypeScript incremental build state
+*.tsbuildinfo
+# secrets (live AI key for the optional local server)
+.env
+.env.*
+!.env.example

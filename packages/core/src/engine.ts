@@ -15,6 +15,11 @@
  *     explained, plausible content -> Accepted.
  *   - aiCallCount is the literal 0 on every return path (Property 9).
  *
+ * Provenance: drafted by Kiro (task 5.1); safety fixes by Claude Code — full-line
+ * matching for every classification, value/unit captured inside the full-line
+ * match, tampered values and unit mismatches refuse, required measurements,
+ * rule-hash recomputation, input-size limits, exact-decimal plausibility.
+ *
  * Determinism note on timestamps: ProcessingResult.processedAt is derived
  * from report.submittedAt (an input), NOT wall-clock time. This is what
  * makes repeat-processing byte-identical. The timestamp answers "when was
@@ -24,19 +29,25 @@
 
 import {
   compileExpression,
-  runExpression,
+  runFullMatch,
   ExpressionTimeoutError,
   RE2JSSyntaxException,
   type CompiledExpression,
   type MatchResult,
 } from "./expression-runner.js";
 import { detectLayout } from "./layout-detector.js";
+import { compareDecimal, isPlainDecimal, numberToDecimal } from "./decimal.js";
+import { computeRuleHash } from "./rule-hash.js";
+// Global in Node 16+ and browsers; declared locally because core uses `types: []`.
+declare const performance: { now(): number };
+
 import type {
   ExtractedValue,
   LineAccountingSummary,
   LineClassification,
   LineEntry,
   OffendingLine,
+  OffendingReason,
   PlausibilityCheck,
   ProcessingResult,
   Provenance,
@@ -44,6 +55,18 @@ import type {
   RuleRecord,
   SuspiciousItem,
 } from "./types.js";
+
+// ---------------------------------------------------------------------------
+// Input limits (bound total work together with RE2's linear-time matching)
+// ---------------------------------------------------------------------------
+
+export const LIMITS = {
+  maxLines: 300,
+  maxLineLength: 400,
+  maxChars: 40_000,
+  /** Cumulative matching budget per report (post-hoc check between lines). */
+  reportBudgetMs: 1_000,
+} as const;
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -104,8 +127,6 @@ interface LineOutcome {
 interface CompiledExtract {
   cls: Extract<LineClassification, { kind: "extract" }>;
   lineCompiled: CompiledExpression;
-  valueCompiled: CompiledExpression;
-  unitCompiled: CompiledExpression | undefined;
   index: number;
 }
 
@@ -154,6 +175,19 @@ export function processReport(
     );
   }
 
+  // --- Guard 2b: the rule object itself must still hash to contentHash ------
+  // (catches a rule edited in memory/storage after approval)
+  const recomputed = computeRuleHash(ruleRecord.rule);
+  if (recomputed !== ruleRecord.contentHash) {
+    throw new IntegrityError(recomputed, ruleRecord.contentHash);
+  }
+
+  // --- Guard 2c: input size limits -> Refusal (never partial processing) ---
+  const tooLarge = inputTooLarge(report);
+  if (tooLarge !== null) {
+    return tooLargeRefusal(report, ruleRecord, tooLarge);
+  }
+
   // --- Guard 3: the report must match this rule's layout -------------------
   let matched: RuleRecord | null;
   try {
@@ -186,26 +220,19 @@ export function processReport(
         cls.lineMatchExpression,
         index,
       );
-      const valueCompiled = mustCompile(
-        "valueExpression",
-        cls.valueExpression,
-        index,
-      );
-      let unitCompiled: CompiledExpression | undefined;
-      if (cls.unitExpression) {
-        unitCompiled = mustCompile(
-          "unitExpression",
-          cls.unitExpression,
-          index,
+      const groups = lineCompiled._compiled.namedGroups();
+      if (!("value" in groups) || (cls.expectedUnit !== undefined && !("unit" in groups))) {
+        throw new RuleExpressionError(
+          "lineClassifications[" + index + "].lineMatchExpression",
+          cls.lineMatchExpression,
+          new Error(
+            cls.expectedUnit !== undefined
+              ? 'extract pattern must contain named groups "value" and "unit"'
+              : 'extract pattern must contain a named group "value"',
+          ),
         );
       }
-      compiledExtracts.push({
-        cls,
-        lineCompiled,
-        valueCompiled,
-        unitCompiled,
-        index,
-      });
+      compiledExtracts.push({ cls, lineCompiled, index });
     } else {
       const lineCompiled = mustCompile(
         "lineMatchExpression",
@@ -251,19 +278,30 @@ export function processReport(
   const suspiciousItems: SuspiciousItem[] = [];
   const seenMeasurementLines = new Map<string, number[]>();
 
+  const budgetStart = performance.now();
   for (let lineNumber = 0; lineNumber < report.lines.length; lineNumber++) {
     const lineContent = report.lines[lineNumber] ?? "";
+    if (performance.now() - budgetStart > LIMITS.reportBudgetMs) {
+      return timeoutRefusal(
+        report,
+        ruleRecord,
+        lineNumber,
+        new ExpressionTimeoutError("<report budget>", LIMITS.reportBudgetMs),
+      );
+    }
 
     // First matching classification wins for this line.
     let winner:
       | { kind: "extract"; ce: CompiledExtract }
       | { kind: "other"; co: CompiledOther }
       | undefined;
+    let winnerMatch: MatchResult | null = null;
 
     for (const candidate of allCompiled) {
       let lineMatch: MatchResult | null;
       try {
-        lineMatch = runExpression(
+        // FULL match: the classification must explain the entire line.
+        lineMatch = runFullMatch(
           candidate.kind === "extract"
             ? candidate.ce.lineCompiled
             : candidate.co.lineCompiled,
@@ -282,6 +320,7 @@ export function processReport(
       }
       if (lineMatch !== null) {
         winner = candidate;
+        winnerMatch = lineMatch;
         break;
       }
     }
@@ -301,6 +340,7 @@ export function processReport(
           lineNumber,
           content: lineContent,
           classification: "unexplained",
+          reason: "unexplained",
         },
       });
       continue;
@@ -310,12 +350,11 @@ export function processReport(
       const ce = winner.ce;
       const outcome = applyExtract(
         ce,
-        report,
+        winnerMatch!,
         lineNumber,
         lineContent,
         extractedValues,
         seenMeasurementLines,
-        suspiciousItems,
         offendingLines,
       );
       outcomes.push({ entry: outcome });
@@ -328,7 +367,24 @@ export function processReport(
           content: lineContent,
           classification: "ignored",
           classificationId: co.classificationId,
+          matchedKind: co.cls.kind,
         },
+      });
+    }
+  }
+
+  // --- Required measurements: an absent required line refuses the report ---
+  for (const ce of compiledExtracts) {
+    if (ce.cls.required !== false && !seenMeasurementLines.has(ce.cls.measurementId)) {
+      offendingLines.push({
+        lineNumber: -1,
+        content: "",
+        reason: "missing-measurement",
+        detail:
+          'Required measurement "' +
+          ce.cls.measurementName +
+          '" does not appear in the report. A truncated or altered report ' +
+          "cannot be accepted.",
       });
     }
   }
@@ -336,8 +392,8 @@ export function processReport(
   // --- Line accounting invariant (Property 3) -------------------------------
   const summary = buildSummary(outcomes, report.lines.length);
 
-  // --- Unexplained content blocks acceptance (Property 1) -------------------
-  if (summary.unexplainedLines > 0) {
+  // --- Unexplained content or any offending line blocks acceptance ---------
+  if (summary.unexplainedLines > 0 || offendingLines.length > 0) {
     return {
       reportId: report.id,
       processedAt: report.submittedAt,
@@ -349,13 +405,28 @@ export function processReport(
       lineAccountingSummary: summary,
       offendingLines,
       resolutionHint:
-        "The report contains line(s) not covered by the active rule. " +
-        "Review the highlighted lines: either the rule needs to classify " +
-        "them, or this report is from a different or tampered source.",
+        "The report contains content the approved rule cannot fully explain " +
+        "(unexplained lines, tampered values, unit mismatches or missing " +
+        "measurements). Nothing from it is treated as verified. Check the " +
+        "highlighted lines: either the report was altered, or it comes from a " +
+        "different source or layout version that needs its own rule.",
     };
   }
 
   // --- Plausibility phase ----------------------------------------------------
+  for (const v of extractedValues) {
+    if (v.plausibilityStatus === "out-of-range") {
+      suspiciousItems.push({
+        lineNumber: v.provenance.lineNumber,
+        content: v.provenance.lineContent,
+        suspicionKind: "out-of-range",
+        detail:
+          v.measurementName + " = " + v.rawValue +
+          " is outside the plausible range in the approved rule. It may be a real " +
+          "extreme value or a corrupted one; a human must decide.",
+      });
+    }
+  }
   runPlausibilityChecks(
     extractedValues,
     ruleRecord.rule.plausibilityChecks,
@@ -434,106 +505,88 @@ function mustCompile(
 }
 
 /**
- * Applies an extract classification to a line that already matched its
- * lineMatchExpression. Runs valueExpression (and optional unitExpression),
- * builds the ExtractedValue with full provenance, and records tampered-value
- * offenders when no value can be extracted.
+ * Applies an extract classification to a line that FULLY matched its
+ * lineMatchExpression. The value (and unit) come from named groups of that
+ * same full match, so the number that was captured is exactly the number the
+ * pattern positioned — no second, independent search of the line.
+ *
+ * Fail-closed outcomes (the line becomes UNEXPLAINED and the report refuses):
+ *   - the captured value is not a plain decimal ("tampered-value");
+ *   - the captured unit differs from expectedUnit ("unit-mismatch").
  */
 function applyExtract(
   ce: CompiledExtract,
-  report: Report,
+  match: MatchResult,
   lineNumber: number,
   lineContent: string,
   extractedValues: ExtractedValue[],
   seenMeasurementLines: Map<string, number[]>,
-  suspiciousItems: SuspiciousItem[],
   offendingLines: OffendingLine[],
 ): LineEntry {
   const cls = ce.cls;
   const classificationId = "extract[" + ce.index + "]";
-  void report;
 
-  let valueMatch: MatchResult | null;
-  try {
-    valueMatch = runExpression(ce.valueCompiled, lineContent);
-  } catch (e) {
-    if (e instanceof ExpressionTimeoutError) {
-      throw e; // converted by the caller into a timeout refusal
-    }
-    throw e;
-  }
+  // Track the line for duplicate/required detection regardless of outcome.
+  const seen = seenMeasurementLines.get(cls.measurementId) ?? [];
+  seen.push(lineNumber);
+  seenMeasurementLines.set(cls.measurementId, seen);
 
-  // Track the line for duplicate detection regardless of value outcome.
-  const lines = seenMeasurementLines.get(cls.measurementId) ?? [];
-  lines.push(lineNumber);
-  seenMeasurementLines.set(cls.measurementId, lines);
-
-  if (valueMatch === null || valueMatch.namedGroups.value == null) {
-    // Line matched lineMatchExpression but valueExpression found no value.
-    // This is tampered/invalid content: flag it, never guess.
-    offendingLines.push({
-      lineNumber,
-      content: lineContent,
-      reason: "tampered-value",
-      detail:
-        'Line matched measurement "' +
-        cls.measurementName +
-        '" but no value could be extracted (valueExpression: "' +
-        cls.valueExpression +
-        '"). The value may be tampered, missing, or malformed.',
-    });
-    suspiciousItems.push({
-      lineNumber,
-      content: lineContent,
-      suspicionKind: "tampered-value",
-      detail:
-        'Measurement "' +
-        cls.measurementName +
-        '" matched its line pattern but the value pattern found nothing.',
-    });
+  const unexplained = (reason: OffendingReason, detail: string): LineEntry => {
+    offendingLines.push({ lineNumber, content: lineContent, reason, detail });
     return {
       lineNumber,
       content: lineContent,
-      classification: "extracted",
+      classification: "unexplained",
       classificationId,
+      reason,
     };
+  };
+
+  const rawValue = match.namedGroups.value ?? null;
+  if (rawValue === null || !isPlainDecimal(rawValue)) {
+    return unexplained(
+      "tampered-value",
+      'Line has the shape of measurement "' +
+        cls.measurementName +
+        '" but its value ' +
+        (rawValue === null ? "is missing" : JSON.stringify(rawValue) + " is not a plain decimal number") +
+        ". The value may be tampered or malformed; it is never guessed.",
+    );
   }
 
-  const rawValue = valueMatch.namedGroups.value;
-
-  // Optional unit extraction.
   let unit: string | undefined;
-  if (ce.unitCompiled) {
-    try {
-      const unitMatch = runExpression(ce.unitCompiled, lineContent);
-      if (unitMatch !== null && unitMatch.namedGroups.unit != null) {
-        unit = unitMatch.namedGroups.unit;
-      }
-    } catch {
-      // Unit extraction failure is not fatal: the value is still valid.
-      // The unit simply remains undefined.
+  if (cls.expectedUnit !== undefined) {
+    const printed = match.namedGroups.unit ?? null;
+    if (printed !== cls.expectedUnit) {
+      return unexplained(
+        "unit-mismatch",
+        'Measurement "' +
+          cls.measurementName +
+          '" was printed with unit ' +
+          JSON.stringify(printed ?? "") +
+          " but the approved rule expects " +
+          JSON.stringify(cls.expectedUnit) +
+          ". A unit change can silently change the meaning of a value.",
+      );
     }
+    unit = printed;
   }
 
-  const numericValue = parseNumeric(rawValue);
-
-  let plausibilityStatus: ExtractedValue["plausibilityStatus"] = "ok";
+  let plausibilityStatus: ExtractedValue["plausibilityStatus"] = "not-checked";
   if (cls.plausibleRange) {
-    if (numericValue === undefined) {
-      plausibilityStatus = "ambiguous";
-    } else if (
-      numericValue < cls.plausibleRange.min ||
-      numericValue > cls.plausibleRange.max
-    ) {
-      plausibilityStatus = "out-of-range";
-    }
+    const lo = numberToDecimal(cls.plausibleRange.min);
+    const hi = numberToDecimal(cls.plausibleRange.max);
+    plausibilityStatus =
+      compareDecimal(rawValue, lo) < 0 || compareDecimal(rawValue, hi) > 0
+        ? "out-of-range"
+        : "ok";
   }
 
-  const vo = valueMatch.groupOffsets.value;
+  const vo = match.groupOffsets.value;
   const provenance: Provenance = {
     lineNumber,
     lineContent,
-    matchedExpression: cls.valueExpression,
+    matchedExpression: cls.lineMatchExpression,
     captureGroup: "value",
     startOffset: vo ? vo.start : -1,
     endOffset: vo ? vo.end : -1,
@@ -543,12 +596,10 @@ function applyExtract(
     measurementId: cls.measurementId,
     measurementName: cls.measurementName,
     rawValue,
-    unit,
-    numericValue,
+    ...(unit !== undefined ? { unit } : {}),
     plausibilityStatus,
     provenance,
   };
-
   extractedValues.push(extracted);
 
   return {
@@ -556,20 +607,27 @@ function applyExtract(
     content: lineContent,
     classification: "extracted",
     classificationId,
+    matchedKind: "extract",
   };
 }
 
-/**
- * Parses a raw value string into a number using strict rules:
- * optional sign, digits with optional single decimal point, optional
- * exponent. No separators, units, or whitespace tolerated.
- */
-export function parseNumeric(raw: string): number | undefined {
-  if (!/^[+-]?(\d+(\.\d+)?|\.\d+)([eE][+-]?\d+)?$/.test(raw)) {
-    return undefined;
+/** Returns a description of the violated input limit, or null if within limits. */
+export function inputTooLarge(report: Report): string | null {
+  if (report.lines.length > LIMITS.maxLines) {
+    return "report has " + report.lines.length + " lines (limit " + LIMITS.maxLines + ")";
   }
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : undefined;
+  let chars = 0;
+  for (let i = 0; i < report.lines.length; i++) {
+    const len = (report.lines[i] ?? "").length;
+    if (len > LIMITS.maxLineLength) {
+      return "line " + (i + 1) + " has " + len + " characters (limit " + LIMITS.maxLineLength + ")";
+    }
+    chars += len;
+  }
+  if (chars > LIMITS.maxChars) {
+    return "report has " + chars + " characters (limit " + LIMITS.maxChars + ")";
+  }
+  return null;
 }
 
 /** Builds the accounting summary from per-line outcomes, checking invariants. */
@@ -628,6 +686,14 @@ function buildSummary(
 // Plausibility checks (cross-value, from the rule's plausibilityChecks)
 // ---------------------------------------------------------------------------
 
+/**
+ * Cross-value checks from the rule. These can only ADD review flags; they can
+ * never make a report acceptable. Range checks are exact (decimal strings).
+ * Ratio and mutual-consistency checks are tolerance heuristics and use
+ * floating point on the printed decimals; any rounding error is ~1e-15
+ * relative, far below the tolerances involved, and it can at worst move a
+ * borderline report between "accepted" and "review" — never hide a line.
+ */
 function runPlausibilityChecks(
   extractedValues: readonly ExtractedValue[],
   checks: readonly PlausibilityCheck[],
@@ -635,38 +701,27 @@ function runPlausibilityChecks(
 ): void {
   const byId = new Map<string, ExtractedValue>();
   for (const v of extractedValues) {
-    byId.set(v.measurementId, v);
+    if (!byId.has(v.measurementId)) byId.set(v.measurementId, v);
   }
+  const num = (v: ExtractedValue) => Number(v.rawValue);
 
   for (const check of checks) {
     switch (check.kind) {
       case "range": {
-        const p = check.parameters as {
-          measurementId?: string;
-          min?: number;
-          max?: number;
-        };
+        const p = check.parameters as { measurementId?: string; min?: number; max?: number };
         const v = p.measurementId ? byId.get(p.measurementId) : undefined;
-        if (!v || v.numericValue === undefined) continue;
-        if (
-          (p.min !== undefined && v.numericValue < p.min) ||
-          (p.max !== undefined && v.numericValue > p.max)
-        ) {
+        if (!v) continue;
+        const below = p.min !== undefined && compareDecimal(v.rawValue, numberToDecimal(p.min)) < 0;
+        const above = p.max !== undefined && compareDecimal(v.rawValue, numberToDecimal(p.max)) > 0;
+        if (below || above) {
           suspiciousItems.push({
             lineNumber: v.provenance.lineNumber,
             content: v.provenance.lineContent,
             suspicionKind: "out-of-range",
             detail:
-              v.measurementName +
-              " = " +
-              v.numericValue +
-              " is outside the plausible range [" +
-              String(p.min ?? "-inf") +
-              ", " +
-              String(p.max ?? "inf") +
-              '] defined by check "' +
-              check.description +
-              '".',
+              v.measurementName + " = " + v.rawValue + " is outside [" +
+              String(p.min ?? "-inf") + ", " + String(p.max ?? "inf") +
+              "] (" + check.description + ").",
           });
         }
         break;
@@ -674,41 +729,22 @@ function runPlausibilityChecks(
 
       case "ratio": {
         const p = check.parameters as {
-          numeratorId?: string;
-          denominatorId?: string;
-          expectedRatio?: number;
-          tolerance?: number;
+          numeratorId?: string; denominatorId?: string; expectedRatio?: number; tolerance?: number;
         };
-        const num = p.numeratorId ? byId.get(p.numeratorId) : undefined;
-        const den = p.denominatorId ? byId.get(p.denominatorId) : undefined;
-        if (
-          !num ||
-          !den ||
-          num.numericValue === undefined ||
-          den.numericValue === undefined ||
-          den.numericValue === 0
-        ) {
-          continue;
-        }
-        const actual = num.numericValue / den.numericValue;
+        const n = p.numeratorId ? byId.get(p.numeratorId) : undefined;
+        const d = p.denominatorId ? byId.get(p.denominatorId) : undefined;
+        if (!n || !d || num(d) === 0) continue;
+        const actual = num(n) / num(d);
         const expected = p.expectedRatio ?? 1;
         const tol = p.tolerance ?? 0.1;
         if (Math.abs(actual - expected) > tol * Math.abs(expected)) {
           suspiciousItems.push({
-            lineNumber: num.provenance.lineNumber,
-            content: num.provenance.lineContent,
+            lineNumber: n.provenance.lineNumber,
+            content: n.provenance.lineContent,
             suspicionKind: "ratio-violation",
             detail:
-              num.measurementName +
-              " / " +
-              den.measurementName +
-              " = " +
-              actual.toFixed(3) +
-              ", expected ~ " +
-              expected +
-              " (tolerance +/-" +
-              (tol * 100).toFixed(0) +
-              "%). " +
+              n.measurementName + " / " + d.measurementName + " = " + actual.toFixed(3) +
+              ", expected about " + expected + " (±" + (tol * 100).toFixed(0) + "%). " +
               check.description,
           });
         }
@@ -716,43 +752,30 @@ function runPlausibilityChecks(
       }
 
       case "mutual-consistency": {
-        const p = check.parameters as {
-          aId?: string;
-          bId?: string;
-          maxFactor?: number;
-        };
+        const p = check.parameters as { aId?: string; bId?: string; maxFactor?: number; relation?: "a<=b" };
         const a = p.aId ? byId.get(p.aId) : undefined;
         const b = p.bId ? byId.get(p.bId) : undefined;
-        if (
-          !a ||
-          !b ||
-          a.numericValue === undefined ||
-          b.numericValue === undefined
-        ) {
-          continue;
+        if (!a || !b) continue;
+        let violated: boolean;
+        let why: string;
+        if (p.relation === "a<=b") {
+          violated = compareDecimal(a.rawValue, b.rawValue) > 0;
+          why = a.measurementName + " (" + a.rawValue + ") must not exceed " + b.measurementName + " (" + b.rawValue + ").";
+        } else {
+          const factor = p.maxFactor ?? 2;
+          const x = Math.abs(num(a));
+          const y = Math.abs(num(b));
+          const ratio = x > y ? x / y : y / x;
+          violated = !Number.isFinite(ratio) || ratio > factor;
+          why = a.measurementName + " (" + a.rawValue + ") and " + b.measurementName + " (" + b.rawValue +
+            ") differ by more than a factor of " + factor + ".";
         }
-        const factor = p.maxFactor ?? 2;
-        const ratio =
-          Math.abs(a.numericValue) > Math.abs(b.numericValue)
-            ? Math.abs(a.numericValue / b.numericValue)
-            : Math.abs(b.numericValue / a.numericValue);
-        if (!Number.isFinite(ratio) || ratio > factor) {
+        if (violated) {
           suspiciousItems.push({
             lineNumber: a.provenance.lineNumber,
             content: a.provenance.lineContent,
             suspicionKind: "mutual-inconsistency",
-            detail:
-              a.measurementName +
-              " (" +
-              a.numericValue +
-              ") and " +
-              b.measurementName +
-              " (" +
-              b.numericValue +
-              ") differ by more than the allowed factor " +
-              factor +
-              ". " +
-              check.description,
+            detail: why + " " + check.description,
           });
         }
         break;
@@ -835,7 +858,7 @@ function timeoutRefusal(
       {
         lineNumber,
         content: report.lines[lineNumber] ?? "",
-        reason: "unexplained",
+        reason: "timeout",
         detail:
           "Processing exceeded the time limit while matching line " +
           (lineNumber + 1) +
@@ -844,8 +867,47 @@ function timeoutRefusal(
       },
     ],
     resolutionHint:
-      "The rule's expressions took too long to match. The rule may be too " +
-      "complex for this report; it should be re-validated or simplified.",
+      "Matching exceeded the per-report time budget (checked between lines; " +
+      "RE2 matching itself is linear-time). Nothing from this report is treated as verified.",
     timeoutOccurred: true,
+  };
+}
+
+function tooLargeRefusal(
+  report: Report,
+  ruleRecord: RuleRecord,
+  detail: string,
+): ProcessingResult {
+  const lineBreakdown: LineEntry[] = report.lines.map((content, i) => ({
+    lineNumber: i,
+    content,
+    classification: "unexplained" as const,
+    reason: "input-too-large" as const,
+  }));
+  return {
+    reportId: report.id,
+    processedAt: report.submittedAt,
+    state: "refusal",
+    ruleId: ruleRecord.rule.ruleId,
+    ruleContentHash: ruleRecord.contentHash,
+    aiCallCount: 0,
+    extractedValues: [],
+    lineAccountingSummary: {
+      totalLines: report.lines.length,
+      extractedLines: 0,
+      ignoredLines: 0,
+      unexplainedLines: report.lines.length,
+      lineBreakdown,
+    },
+    offendingLines: [
+      {
+        lineNumber: -1,
+        content: "",
+        reason: "input-too-large",
+        detail: "Input exceeds processing limits: " + detail + ".",
+      },
+    ],
+    resolutionHint:
+      "The report is larger than any supported layout. It was not processed.",
   };
 }

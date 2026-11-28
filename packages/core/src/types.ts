@@ -24,9 +24,18 @@ export type LineClassification =
       kind: "extract";
       measurementId: string;
       measurementName: string;
+      /**
+       * RE2 pattern that must match the ENTIRE line (full match, not a search).
+       * It must contain a named group `value` and, when `expectedUnit` is set,
+       * a named group `unit`. (Claude Code change: the draft's separate
+       * valueExpression/unitExpression searched the line independently and
+       * could pick the wrong number or ignore trailing text.)
+       */
       lineMatchExpression: string;
-      valueExpression: string;
-      unitExpression?: string;
+      /** If set, the captured `unit` must equal this string exactly. */
+      expectedUnit?: string;
+      /** Defaults to true: a required measurement missing from the report refuses it. */
+      required?: boolean;
       plausibleRange?: { readonly min: number; readonly max: number };
     }
   | { kind: "ignore"; reason: string; lineMatchExpression: string }
@@ -104,6 +113,8 @@ export interface RuleEvent {
 
 export interface ApprovalRecord {
   approvedAt: string;
+  /** Name typed by the human who approved (required; never empty). */
+  approvedBy: string;
   ruleContentHash: string;
   validationRunId: string;
   scopeStatement: string;
@@ -113,8 +124,17 @@ export interface ApprovalRecord {
 // RuleRecord
 // ---------------------------------------------------------------------------
 
+/** Where a rule proposal came from (outside the hashed rule content). */
+export interface ProposalSource {
+  kind: "live-ai" | "recorded-ai" | "operator";
+  model?: string;
+  recordedAt?: string;
+  promptHash?: string;
+}
+
 export interface RuleRecord {
   rule: ExtractionRule;
+  proposalSource?: ProposalSource;
   contentHash: string;
   status: RuleStatus;
   validationRunId?: string;
@@ -149,10 +169,10 @@ export interface Provenance {
 export interface ExtractedValue {
   measurementId: string;
   measurementName: string;
+  /** The value exactly as printed (a plain decimal). Never converted to float. */
   rawValue: string;
   unit?: string;
-  numericValue?: number;
-  plausibilityStatus: "ok" | "out-of-range" | "ambiguous";
+  plausibilityStatus: "ok" | "out-of-range" | "not-checked";
   provenance: Provenance;
 }
 
@@ -165,6 +185,10 @@ export interface LineEntry {
   content: string;
   classification: "extracted" | "ignored" | "unexplained";
   classificationId?: string;
+  /** For ignored lines: header | footer | ignore. */
+  matchedKind?: "extract" | "ignore" | "header" | "footer";
+  /** Why a line is unexplained (e.g. no classification, tampered value, unit mismatch). */
+  reason?: OffendingReason;
 }
 
 // ---------------------------------------------------------------------------
@@ -183,15 +207,20 @@ export interface LineAccountingSummary {
 // OffendingLine
 // ---------------------------------------------------------------------------
 
+export type OffendingReason =
+  | "unexplained"
+  | "tampered-value"
+  | "unit-mismatch"
+  | "missing-measurement"
+  | "layout-mismatch"
+  | "input-too-large"
+  | "timeout";
+
 export interface OffendingLine {
+  /** 0-indexed line number, or -1 when the problem is an ABSENT line (missing measurement). */
   lineNumber: number;
   content: string;
-  reason:
-    | "unexplained"
-    | "tampered-value"
-    | "out-of-range"
-    | "layout-mismatch"
-    | "ambiguous";
+  reason: OffendingReason;
   detail: string;
 }
 
@@ -255,19 +284,4 @@ export interface ValidationResult {
   limitations: string;
 }
 
-// ---------------------------------------------------------------------------
-// computeRuleHash stub
-// (Implementation lives in packages/core/src/rule-store.ts — Task 8)
-// ---------------------------------------------------------------------------
-
-/**
- * Compute a deterministic SHA-256 content hash for an ExtractionRule.
- * Used to bind an ApprovalRecord to the exact rule version it covers.
- * Implementation is in packages/core/src/rule-store.ts (Task 8).
- * This stub is re-exported from types.ts for type-checking purposes during Tasks 3–7.
- *
- * @throws {Error} Always — do not call this stub.
- */
-export function computeRuleHash(_rule: ExtractionRule): string {
-  throw new Error("computeRuleHash: implementation not yet available (Task 8)");
-}
+// computeRuleHash lives in rule-hash.ts (re-exported from index.ts).

@@ -137,6 +137,38 @@ export function runExpression(
 }
 
 // ---------------------------------------------------------------------------
+// runFullMatch (added by Claude Code)
+// ---------------------------------------------------------------------------
+
+/**
+ * Like runExpression, but succeeds only if the expression matches the ENTIRE
+ * input (RE2 `matches()`), never a substring. Line classification uses this so
+ * that no trailing or leading text on a classified line can go unexplained:
+ * "HGB 13.5 g/dL" may match, "HGB 13.5 g/dL  HIV REACTIVE" must not.
+ *
+ * The time check is a post-hoc budget check (re2js is synchronous and cannot be
+ * interrupted); the hard bound comes from RE2's linear-time matching combined
+ * with the engine's input-size limits.
+ */
+export function runFullMatch(
+  expr: CompiledExpression,
+  input: string,
+  timeoutMs = 500,
+): MatchResult | null {
+  const start = performance.now();
+  const matcher = expr._compiled.matcher(input);
+  const found = matcher.matches();
+  const elapsed = performance.now() - start;
+  if (elapsed > timeoutMs) {
+    throw new ExpressionTimeoutError(expr.pattern, timeoutMs);
+  }
+  if (!found) {
+    return null;
+  }
+  return extractMatchResult(expr, matcher);
+}
+
+// ---------------------------------------------------------------------------
 // extractMatchResult (internal)
 // ---------------------------------------------------------------------------
 
