@@ -45,8 +45,8 @@ Language: **TypeScript** (full-stack, as specified in the design).
     - For expressions run against inputs that exceed `timeoutMs`, assert the return is a Refusal-equivalent (ExpressionTimeoutError thrown), never a partial result
     - **Validates: Requirements 11.1, 11.3 (Property 11) and 11.2 (Property 12)**
 
-- [ ] 4. Implement LayoutDetector
-  - [ ] 4.1 Implement `packages/core/src/layout-detector.ts`
+- [x] 4. Implement LayoutDetector
+  - [x] 4.1 Implement `packages/core/src/layout-detector.ts`
     - Implement `detectLayout(report: Report, activeRules: RuleRecord[]): RuleRecord | null`
     - Join `report.lines` and test each active rule's `layoutMatchExpression` via `runExpression` in order; return the first match or `null`
     - Pure function: no I/O, no mutations, no AI calls
