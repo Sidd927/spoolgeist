@@ -67,6 +67,13 @@
         "chatSessionId": "sess_e7e6560f-84ae-4036-a355-9730290a4d5a",
         "timestamp": 1795839123571
       }
+    ],
+    "5.1 Implement `packages/core/src/engine.ts`": [
+      {
+        "executionId": "7d8f19e5-3cb7-42b9-af0d-7043add8a5a4",
+        "chatSessionId": "sess_e7e6560f-84ae-4036-a355-9730290a4d5a",
+        "timestamp": 1795839421044
+      }
     ]
   }
 }
