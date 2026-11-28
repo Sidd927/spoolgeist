@@ -39,6 +39,13 @@ describe("parseRuleProposal", () => {
     expect(parseRuleProposal(JSON.stringify({ ...base, lineClassifications: [{ kind: "footer", lineMatchExpression: "x" }] })).errors).toContain("a rule must extract at least one measurement");
   });
 
+  it("allows an empty line pattern (blank lines) but not an empty layout pattern", () => {
+    const base = cbcRule();
+    const withBlank = { ...base, lineClassifications: [...base.lineClassifications, { kind: "ignore", reason: "blank", lineMatchExpression: "" }] };
+    expect(parseRuleProposal(JSON.stringify(withBlank)).ok).toBe(true);
+    expect(parseRuleProposal(JSON.stringify({ ...base, layoutMatchExpression: "" })).ok).toBe(false);
+  });
+
   it("ignores any status/approval fields an AI might include", () => {
     const r = parseRuleProposal(JSON.stringify({ ...cbcRule(), status: "active", approvalRecord: { approvedBy: "AI" } }));
     expect(r.ok).toBe(true);

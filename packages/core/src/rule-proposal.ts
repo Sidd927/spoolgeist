@@ -49,7 +49,9 @@ export function parseRuleProposal(text: string): ProposalParseResult {
     }
     return v;
   };
-  const pattern = (o: Record<string, unknown>, k: string, where: string): string => {
+  /** Line patterns may be "" (matches only an empty line); the layout pattern may not. */
+  const pattern = (o: Record<string, unknown>, k: string, where: string, allowEmpty = k === "lineMatchExpression"): string => {
+    if (allowEmpty && o[k] === "") return "";
     const p = str(o, k, where);
     if (p.length > MAX_PATTERN_CHARS) errors.push(`${where}.${k} is longer than ${MAX_PATTERN_CHARS} characters`);
     else if (p) {

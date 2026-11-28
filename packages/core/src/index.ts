@@ -8,3 +8,4 @@ export * from "./decimal.js";
 export * from "./rule-proposal.js";
 export * from "./validation-gate.js";
 export * from "./rule-lifecycle.js";
+export * from "./onboarding-prompt.js";
