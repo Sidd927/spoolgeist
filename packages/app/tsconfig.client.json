@@ -8,9 +8,23 @@
     "outDir": "dist/client",
     "rootDir": "src/frontend",
     "composite": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "verbatimModuleSyntax": true,
-    "types": ["react", "react-dom"]
+    "types": [
+      "react",
+      "react-dom"
+    ],
+    "resolveJsonModule": true
   },
-  "include": ["src/frontend/**/*"]
+  "include": [
+    "src/frontend/**/*",
+    "src/frontend/**/*.json"
+  ],
+  "exclude": [
+    "src/frontend/**/__tests__/**"
+  ]
 }

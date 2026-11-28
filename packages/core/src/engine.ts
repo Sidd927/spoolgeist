@@ -420,8 +420,8 @@ function runRule(report: Report, rule: ExtractionRule, contentHash: string): Pro
         detail:
           'Required measurement "' +
           ce.cls.measurementName +
-          '" does not appear in the report. A truncated or altered report ' +
-          "cannot be accepted.",
+          '" was not found on any fully explained line (absent, or present ' +
+          "but altered). A report without it cannot be accepted.",
       });
     }
   }
