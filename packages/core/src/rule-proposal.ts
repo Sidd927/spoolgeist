@@ -19,10 +19,21 @@ const MAX_PROPOSAL_CHARS = 50_000;
 const MAX_CLASSIFICATIONS = 80;
 const MAX_PATTERN_CHARS = 300;
 
-/** Extracts the first JSON object from model output (tolerates ```json fences). */
+/**
+ * Extracts the first JSON object from model output (tolerates ```json fences).
+ * Plain string scanning only: model output is untrusted, and a backtracking
+ * native RegExp over 50 KB of it could take quadratic time (found in review).
+ */
 export function extractJsonObject(text: string): string | null {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text);
-  const body = fenced?.[1] ?? text;
+  let body = text;
+  const open = text.indexOf("```");
+  if (open >= 0) {
+    const close = text.indexOf("```", open + 3);
+    if (close > open) {
+      body = text.slice(open + 3, close);
+      if (body.startsWith("json")) body = body.slice(4);
+    }
+  }
   const start = body.indexOf("{");
   const end = body.lastIndexOf("}");
   return start >= 0 && end > start ? body.slice(start, end + 1) : null;

@@ -7,7 +7,7 @@
     "build": "tsc -b packages/core && npm run build --workspace=packages/app",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "typecheck": "tsc -b packages/core packages/app --noEmit"
+    "typecheck": "tsc -b packages/core && npm run typecheck -w packages/app"
   },
   "devDependencies": {
     "typescript": "^5.8.0",

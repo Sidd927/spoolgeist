@@ -4,11 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run build:server && npm run build:client",
-    "build:server": "tsc -b",
-    "build:client": "vite build",
-    "dev": "node dist/server.js",
-    "typecheck": "tsc --noEmit"
+    "build": "tsc -p tsconfig.client.json --noEmit && vite build",
+    "dev": "vite",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.client.json --noEmit"
   },
   "dependencies": {
     "@fontsource/atkinson-hyperlegible-next": "^5.3.0",

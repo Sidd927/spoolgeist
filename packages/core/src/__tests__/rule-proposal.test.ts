@@ -53,6 +53,15 @@ describe("parseRuleProposal", () => {
     expect(r.rule).not.toHaveProperty("approvalRecord");
   });
 
+  it("handles adversarial fence-heavy output in linear time", () => {
+    const evil = "```" + " ".repeat(49_000);
+    const evil2 = "```json\n".repeat(5_000);
+    const t0 = performance.now();
+    expect(parseRuleProposal(evil).ok).toBe(false);
+    expect(parseRuleProposal(evil2).ok).toBe(false);
+    expect(performance.now() - t0).toBeLessThan(200);
+  });
+
   it("never throws on arbitrary input", () => {
     fc.assert(fc.property(fc.string({ maxLength: 500 }), (s) => {
       const r = parseRuleProposal(s);
